@@ -97,7 +97,7 @@ class BillingDashboard
         $dashboard->todo('admin', 'billing.payment_review', fn (?User $user): array => [
             'label' => 'Gateway payments to review',
             'count' => $this->ambiguousAttempts(),
-            'href' => route('admin.billing.payment-attempts.index', ['status' => 'ambiguous']),
+            'href' => route('admin.billing.payment-attempts.index', ['review' => 1]),
             'tone' => 'danger',
             'icon' => 'CreditCard',
         ], 'billing.payments.manage', 13);
@@ -109,6 +109,15 @@ class BillingDashboard
             'tone' => 'warning',
             'icon' => 'CreditCard',
             'hint' => 'Paid late, or kept as credit: refund if needed',
+        ], 'billing.payments.manage', 14);
+
+        $dashboard->todo('admin', 'billing.portal_refunds', fn (?User $user): array => [
+            'label' => 'Refunds made at the provider to record',
+            'count' => PaymentAttempt::toCheck([PaymentAttempt::CHECK_PORTAL_REFUND])->count(),
+            'href' => route('admin.billing.payment-attempts.index', ['check' => PaymentAttempt::CHECK_PORTAL_REFUND]),
+            'tone' => 'danger',
+            'icon' => 'CreditCard',
+            'hint' => 'Refunded in the gateway\'s portal: record it on the invoice or with Refund account credit, as the reason says, then mark it checked',
         ], 'billing.payments.manage', 14);
 
         $dashboard->todo('admin', 'billing.reversals_review', fn (?User $user): array => [

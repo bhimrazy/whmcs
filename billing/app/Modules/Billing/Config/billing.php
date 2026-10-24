@@ -61,6 +61,10 @@ return [
         // at most late_lookups_per_run of them per hourly run.
         'late_lookup_hours' => 48,
         'late_lookups_per_run' => 100,
+        // Settled payments at providers without webhooks (Khalti, eSewa) are looked up once a day this many days after
+        // they started, for refunds made in the provider's portal (0 = off, max 30), at most refund_checks_per_run a day.
+        'refund_check_days' => 7,
+        'refund_checks_per_run' => 300,
         'http_timeout_seconds' => 15,
         'ambiguous_alert_minutes' => 30,
         // Gateway log entries (request and response payloads) are deleted after this many days (90 to 3,650).

@@ -261,7 +261,8 @@ interface HostedPaymentDriver extends GatewayDriver            // opt-in; manual
   `billing.gateways.lookup_interval_minutes` (5), `billing.gateways.lookups_per_run` (200, at most 1,000; least
   recently checked first, 4-minute deadline per run), `billing.gateways.lookup_grace_minutes` (120),
   `billing.gateways.http_timeout_seconds` (15), `billing.gateways.ambiguous_alert_minutes` (30),
-  `billing.gateways.late_lookup_hours` (48) and `billing.gateways.late_lookups_per_run` (100).
+  `billing.gateways.late_lookup_hours` (48), `billing.gateways.late_lookups_per_run` (100),
+  `billing.gateways.refund_check_days` (7) and `billing.gateways.refund_checks_per_run` (300) (§3.5).
 - **Packaging (an "extension"):** each extension is one class `Drivers/Gateways/Nepal/<Name>Driver.php` plus
   endpoint config in `Config/billing.php` → `gateways.<key>.{sandbox,live}` plus one line in
   `BillingServiceProvider` (`$manager->register(...)`) plus Http::fake fixtures and a contract-test dataset entry.
@@ -317,8 +318,10 @@ expires_at, last_lookup_at, lookup_count, raw (redacted json), timestamps`, with
 ### 3.4 Refunds
 
 Khalti declares `refund` (and `partial_refund` only once its unit is proven, see §8.2) and uses the existing `refund(Gateway, Transaction, Money)`.
-Every other driver omits `refund`. Staff then use `record_only` / `to_credit` (§4.7) after refunding in the
-provider portal, and the UI shows "Refund in the eSewa/ConnectIPS portal first."
+Every other driver omits `refund`. After refunding in the provider portal, staff record it with `record_only` (§4.7),
+and the UI shows "Refund in the eSewa/ConnectIPS portal first." `to_credit` is never the way to record a portal
+refund: it gives the client the same amount again as account credit. The part of a payment that went to account
+credit is recorded with Refund account credit (recorded) instead.
 
 ### 3.5 Refunds seen by lookup
 
@@ -326,8 +329,32 @@ A lookup on an already-paid attempt that reports Refunded / FULL_REFUND does **n
 creates a staff todo with a "record refund" action, so a refund made in the provider portal does not leave the
 customer with credit they never had.
 
-**Deferred (CTO, 2026-10-18): issue #27.** v1 never looks up an attempt again once it is paid, so a refund made in the
-provider portal after payment is not detected yet. Attempts refunded _before_ we saw them do go to staff review.
+**Built (#27): the daily re-lookup of paid attempts** (`Billing\Services\SettledRefundCheck`, automation task
+`billing.gateway_refund_check`, stage SYNC). Attempts refunded _before_ we saw them go to staff review, as before.
+
+- **Which attempts:** succeeded, booked (`transaction_id` set), started within `billing.gateways.refund_check_days` (7, 0 =
+  off, at most 30), on a gateway whose driver supports `lookup` but not `webhook` (Khalti and eSewa; Stripe and the
+  sandbox card push refunds by webhook). Each is looked up at most once every 20 hours, so a forced re-run of the day's
+  task calls no provider again. The query reads `payment_attempts_created_at_index` (a week of attempts, not the table),
+  least recently looked up first, at most `billing.gateways.refund_checks_per_run` (300, at most 1,000), with a 10-minute
+  deadline. A transient error (`retryable`) stops that gateway for the run and leaves the attempt unstamped.
+- **What is flagged:** a `refunded` answer while the payment's own refund rows (succeeded or pending, including payouts
+  of account credit through the gateway, but never refunds to account credit, which pay nothing out) total less than the payment,
+  counting also a payout of the payment's credit (its overpayment, or its own refunds to credit) recorded with Refund
+  account credit (recorded). That payout names no payment, so it counts only up to what the client no longer holds:
+  payouts recorded since the payment, and at most the payment's credit less the client's credit balance now. A client
+  who still holds the credit is flagged, or a `partially_refunded` answer while it has none. The answer is applied under
+  the payment's lock, then the attempt's, the order the provider refund callback uses; a staff refund reserves under the
+  payment's lock, so it is either counted or comes after the flag (race tests on PostgreSQL). Neither provider reports the
+  refunded amount, so a second partial portal refund after one recorded here is not told apart.
+- **What happens:** no money moves. The attempt gets `check_reason = portal_refund` (to-do "Refunds made at the provider to
+  record", `billing.payments.manage`), a review reason, `raw.portal_refund` (status, time, amount refunded here, amount
+  the payment left as credit) and an activity entry `billing.payment.portal_refund`. Staff record the refund on the
+  invoice (Refund → record); for the part the payment left as account credit, or that a refund to credit turned into
+  credit, which the invoice's refund refuses, the reason points to Refund account credit. Then they mark the payment checked. An open late or credit flag on the same
+  attempt is not lost: it is kept in `raw.portal_refund.previous_check` and after "; was:" in the review reason. The same status is not flagged twice; a partial refund that becomes full is flagged again.
+- **Khalti bank-funded payments** stay manual for v1 (no payer mobile number stored): every refund Khalti declines tells
+  staff to refund a bank-funded payment in the Khalti portal and record it.
 
 ## 4. Security checklist
 
@@ -471,7 +498,7 @@ merchants).
     - ConnectIPS: needs NCHL onboarding and PFX → PEM signing, and its `TXNID` max of 20 characters requires a short
       provider reference (see §8.4).
     - Fonepay and IME Pay.
-    - §3.5 out-of-band refunds after payment: deferred to issue #27.
+    - §3.5 out-of-band refunds after payment: built (P5c, #27), see §3.5.
     - eSewa Intent (the mobile-app deeplink flow, see §8.3).
 
 ### 8.2 Khalti: what the official docs say today vs this spec

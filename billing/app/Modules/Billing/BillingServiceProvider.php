@@ -53,6 +53,7 @@ use App\Modules\Billing\Services\DocumentNumbers;
 use App\Modules\Billing\Services\InvoiceService;
 use App\Modules\Billing\Services\NepalVatMode;
 use App\Modules\Billing\Services\PaymentReconciler;
+use App\Modules\Billing\Services\SettledRefundCheck;
 use App\Modules\Billing\Services\Tax\BillingTaxIdRules;
 use App\Modules\Billing\Services\Tax\TaxEngine;
 use App\Modules\Billing\Support\BillingClientDashboard;
@@ -218,6 +219,7 @@ class BillingServiceProvider extends ModuleServiceProvider
         $automation->task('billing.auto_capture', Automation::AUTO_CHARGE, fn (CarbonImmutable $today): int => $tasks()->autoCapture($today), label: 'Charge saved cards', description: 'Charges saved payment methods before the due date, then retries failed charges on schedule.');
         $automation->task('billing.reminders', Automation::REMINDERS, fn (CarbonImmutable $today): int => $tasks()->reminders($today), label: 'Send invoice reminders', description: 'Marks invoices overdue and sends the before-due and overdue reminders, once a day at most.');
         $automation->task('billing.payment_reconciliation', Automation::SYNC, fn (CarbonImmutable $today): int => $this->app->make(PaymentReconciler::class)->run(), label: 'Reconcile gateway payments', description: 'Looks up pending and unclear gateway payments whose customer never returned.');
+        $automation->task('billing.gateway_refund_check', Automation::SYNC, fn (CalendarDate $today): int => $this->app->make(SettledRefundCheck::class)->run(), label: 'Check paid gateway payments for refunds', description: 'Looks up recent payments again at gateways that send no refund notice (such as Khalti and eSewa) and flags refunds made in their portal for staff to record.');
         $automation->task('billing.auto_cancel', Automation::CANCELLATIONS, fn (CarbonImmutable $today): int => $tasks()->autoCancel($today), label: 'Cancel unpaid overdue invoices', description: 'Cancels overdue invoices that have no payments and no credit applied.');
         $automation->task('billing.housekeeping', Automation::HOUSEKEEPING, fn (CarbonImmutable $today): int => $tasks()->housekeeping($today), label: 'Expire old quotes', description: 'Marks quotes past their validity date as expired.');
         $automation->task('billing.gateway_log_prune', Automation::HOUSEKEEPING, fn (CalendarDate $today): int => $this->app->make(PruneGatewayLog::class)->handle(RetentionRunDate::of($today)), label: 'Prune the gateway log', description: 'Deletes gateway log entries older than the retention period.');
@@ -404,6 +406,8 @@ class BillingServiceProvider extends ModuleServiceProvider
             $int('gateways.lookup_grace_minutes', 'Hosted payments: grace after expiry before giving up (minutes)'),
             new SettingDefinition('billing.gateways.late_lookup_hours', 'Hosted payments: keep checking closed payments for late success (hours)', 'integer', 'Hourly, up to 168 hours after the payment started. 0 turns it off.', rules: ['min:0', 'max:'.PaymentReconciler::MAX_LATE_LOOKUP_HOURS]),
             new SettingDefinition('billing.gateways.late_lookups_per_run', 'Hosted payments: late checks per hourly run', 'integer', 'At most this many closed payments are looked up each hour (1 to 1,000).', rules: ['min:1', 'max:1000']),
+            new SettingDefinition('billing.gateways.refund_check_days', 'Hosted payments: check paid payments for portal refunds (days)', 'integer', 'Daily, up to 30 days after the payment started, for gateways that send no refund notice (Khalti, eSewa). 0 turns it off.', rules: ['min:0', 'max:'.SettledRefundCheck::MAX_DAYS]),
+            new SettingDefinition('billing.gateways.refund_checks_per_run', 'Hosted payments: portal refund checks per day', 'integer', 'At most this many paid payments are looked up each day (1 to 1,000); the least recently checked go first.', rules: ['min:1', 'max:'.PaymentReconciler::MAX_LOOKUPS_PER_RUN]),
             $int('gateways.http_timeout_seconds', 'Gateway HTTP timeout (seconds)'),
             $int('gateways.ambiguous_alert_minutes', 'Alert staff about unresolved payments after (minutes)'),
             $bool('quotes.require_tos', 'Quotes require accepting terms'),

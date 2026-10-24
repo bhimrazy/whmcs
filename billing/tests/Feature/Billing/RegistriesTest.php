@@ -67,7 +67,7 @@ test('every registered gateway declares REDIRECT exactly when it is a hosted pay
 test('billing automation tasks are registered in pipeline order', function () {
     $tasks = array_keys(array_filter(app(Automation::class)->ordered(), fn ($task, $key) => str_starts_with($key, 'billing.'), ARRAY_FILTER_USE_BOTH));
 
-    expect($tasks)->toBe(['billing.late_fees', 'billing.auto_capture', 'billing.reminders', 'billing.auto_cancel', 'billing.payment_reconciliation', 'billing.housekeeping', 'billing.gateway_log_prune']);
+    expect($tasks)->toBe(['billing.late_fees', 'billing.auto_capture', 'billing.reminders', 'billing.auto_cancel', 'billing.payment_reconciliation', 'billing.gateway_refund_check', 'billing.housekeeping', 'billing.gateway_log_prune']);
 });
 
 test('navigation shows billing items according to permissions', function () {

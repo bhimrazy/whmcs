@@ -60,6 +60,9 @@ class PaymentAttempt extends Model
     /** Refunded at the provider for more than the account credit left from it. */
     public const CHECK_REFUND = 'refund';
 
+    /** Refunded in the provider's portal after it was booked, found by the daily re-lookup (SettledRefundCheck). */
+    public const CHECK_PORTAL_REFUND = 'portal_refund';
+
     /** Staff can mark checked: shown on the "Late payments to check" or "Gateway payments to review" to-do. */
     public function needsCheck(): bool
     {

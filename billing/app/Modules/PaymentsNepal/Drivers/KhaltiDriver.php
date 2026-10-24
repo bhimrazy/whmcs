@@ -46,6 +46,9 @@ final class KhaltiDriver extends AbstractGatewayDriver implements ConnectionTest
 {
     public const KEY = 'khalti';
 
+    /** Shown with every refund Khalti declines. */
+    public const BANK_FUNDED_NOTE = 'If the payment was made from a bank account, refund it in the Khalti merchant portal, then record the refund here';
+
     /** How long resumeUrl()'s lookup answer may stand in for the lookup Billing makes right after a refused resume. */
     private const RESUME_ANSWER_SECONDS = 15;
 
@@ -278,8 +281,10 @@ final class KhaltiDriver extends AbstractGatewayDriver implements ConnectionTest
             return new ChargeResult(ChargeResult::ERROR, declineReason: 'Khalti answered HTTP '.$response->status().'; the refund stays pending until it is confirmed', raw: $raw);
         }
 
+        // Bank-funded payments are refunded in the Khalti portal for v1 (#27): the API needs the payer's full mobile number,
+        // which is never stored. The reason staff see says so.
         if (! $response->successful()) {
-            return new ChargeResult(ChargeResult::DECLINED, declineReason: mb_substr(ProviderHttp::summary($response->json()) ?: 'HTTP '.$response->status(), 0, 150), raw: $raw);
+            return new ChargeResult(ChargeResult::DECLINED, declineReason: mb_substr(ProviderHttp::summary($response->json()) ?: 'HTTP '.$response->status(), 0, 150).'. '.self::BANK_FUNDED_NOTE, raw: $raw);
         }
 
         return new ChargeResult(ChargeResult::SUCCESS, raw: $raw);

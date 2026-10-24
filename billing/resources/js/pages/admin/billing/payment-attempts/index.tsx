@@ -64,7 +64,12 @@ const CHECK_LABELS: Record<string, string> = {
     late: 'Late payment',
     credit: 'Kept as credit',
     refund: 'Refund over credit',
+    portal_refund: 'Refunded at gateway',
 };
+
+const CHECK_OPTIONS: SelectOption[] = Object.entries(CHECK_LABELS).map(
+    ([value, label]) => ({ value, label }),
+);
 
 function flagLabel(attempt: Attempt): string | null {
     const label = attempt.check_reason
@@ -292,7 +297,7 @@ export default function PaymentAttempts({ attempts, statuses }: Props) {
                 />
                 <FilterBar
                     searchParam={null}
-                    filterKeys={['status', 'late']}
+                    filterKeys={['status', 'late', 'check', 'review']}
                     filters={
                         <>
                             <FilterSelect
@@ -305,6 +310,12 @@ export default function PaymentAttempts({ attempts, statuses }: Props) {
                                 label="Late payments"
                                 allLabel="All attempts"
                                 options={LATE_OPTIONS}
+                            />
+                            <FilterSelect
+                                name="check"
+                                label="Flags"
+                                allLabel="Any flag"
+                                options={CHECK_OPTIONS}
                             />
                         </>
                     }
